@@ -1,0 +1,48 @@
+name: Check Azure Server Uptime
+
+on:
+  workflow_dispatch:        # run manually from the Actions tab
+  schedule:
+    - cron: "0 */6 * * *"   # optional: every 6 hours (remove if not needed)
+
+jobs:
+  uptime:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.AZURE_SSH_KEY }}
+          SSH_HOST: ${{ secrets.AZURE_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+
+      - name: Check uptime
+        env:
+          SSH_HOST: ${{ secrets.AZURE_HOST }}
+          SSH_USER: ${{ secrets.AZURE_USER }}
+        run: |
+          UPTIME_PRETTY=$(ssh -i ~/.ssh/id_rsa "$SSH_USER@$SSH_HOST" "uptime -p")
+          UPTIME_FULL=$(ssh -i ~/.ssh/id_rsa "$SSH_USER@$SSH_HOST" "uptime")
+          BOOT_TIME=$(ssh -i ~/.ssh/id_rsa "$SSH_USER@$SSH_HOST" "uptime -s")
+
+          echo "Uptime:     $UPTIME_PRETTY"
+          echo "Full:       $UPTIME_FULL"
+          echo "Up since:   $BOOT_TIME"
+
+          # Also show it on the workflow run summary page
+          {
+            echo "### Azure Server Uptime"
+            echo ""
+            echo "| Item | Value |"
+            echo "|------|-------|"
+            echo "| Uptime | $UPTIME_PRETTY |"
+            echo "| Up since | $BOOT_TIME |"
+            echo "| Full output | \`$UPTIME_FULL\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Clean up SSH key
+        if: always()
+        run: rm -f ~/.ssh/id_rsa
